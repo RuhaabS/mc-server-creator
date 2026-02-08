@@ -4,7 +4,7 @@
 #  Creates a Minecraft Java Edition server with custom settings
 #
 #  Run directly:  .\Create-MCServer.ps1
-#  Run via pipe:  irm https://your-url/Create-MCServer.ps1 | iex
+#  Run via pipe:  irm https://raw.githubusercontent.com/RuhaabS/mc-server-creator/main/Create-MCServer.ps1 | iex
 # ============================================================
 
 param(
