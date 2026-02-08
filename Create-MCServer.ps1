@@ -1,4 +1,4 @@
-﻿& {
+& {
 # ============================================================
 #  Minecraft Server Creator Script
 #  Creates a Minecraft Java Edition server with custom settings
