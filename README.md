@@ -44,7 +44,7 @@ Automatic Java detection & install · Version picker · Interactive or scripted 
 2. Copy-paste and press **Enter**:
 
 ```powershell
-irm https://raw.githubusercontent.com/YOUR_USERNAME/mc-server-creator/main/Create-MCServer.ps1 | iex
+irm https://raw.githubusercontent.com/RuhaabS/mc-server-creator/main/Create-MCServer.ps1 | iex
 ```
 
 3. Follow the interactive wizard!
@@ -65,7 +65,7 @@ irm https://raw.githubusercontent.com/YOUR_USERNAME/mc-server-creator/main/Creat
 2. Copy-paste and press **Enter**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/mc-server-creator/main/create-mcserver.sh | bash
+curl -fsSL https://raw.githubusercontent.com/RuhaabS/mc-server-creator/main/create-mcserver.sh | bash
 ```
 
 3. Follow the interactive wizard!
