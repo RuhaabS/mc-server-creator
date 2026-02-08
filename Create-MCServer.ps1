@@ -1,4 +1,5 @@
-﻿# ============================================================
+﻿& {
+# ============================================================
 #  Minecraft Server Creator Script
 #  Creates a Minecraft Java Edition server with custom settings
 #
@@ -6,7 +7,6 @@
 #  Run via pipe:  irm https://your-url/Create-MCServer.ps1 | iex
 # ============================================================
 
-& {
 param(
     [string]$ServerPath,
     [string]$Version,
