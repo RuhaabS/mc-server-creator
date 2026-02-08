@@ -6,6 +6,7 @@
 #  Run via pipe:  irm https://your-url/Create-MCServer.ps1 | iex
 # ============================================================
 
+& {
 param(
     [string]$ServerPath,
     [string]$Version,
@@ -870,3 +871,4 @@ Write-Host "    .\start.bat       (Command Prompt)" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  Happy crafting! ⛏️" -ForegroundColor Green
 Write-Host ""
+}
