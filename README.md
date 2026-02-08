@@ -12,7 +12,6 @@ Automatic Java detection & install · Version picker · Interactive or scripted 
 
 [![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)](#method-1--powershell-%EF%B8%8F)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](#method-2--bash-)
-[![CMD](https://img.shields.io/badge/CMD-4D4D4D?logo=windowsterminal&logoColor=white)](#method-3--cmd)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Donate-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/ruhaabs)
 
@@ -77,19 +76,6 @@ chmod +x create-mcserver.sh
 ./create-mcserver.sh
 ```
 
----
-
-### Method 3 — CMD
-
-> For **Windows Command Prompt** (uses PowerShell under the hood for JSON/downloads)
-
-1. Download [**Create-MCServer.cmd**](Create-MCServer.cmd)
-2. Double-click or run from Command Prompt:
-
-```cmd
-Create-MCServer.cmd
-```
-
 ## 🤖 Non-Interactive Mode
 
 Pass `--version` (or `-Version`) and `--path` (or `-ServerPath`) to skip all prompts.  
@@ -129,30 +115,13 @@ All other settings fall back to sensible defaults unless you override them.
 
 </details>
 
-<details>
-<summary><b>CMD Example</b></summary>
-
-```cmd
-Create-MCServer.cmd ^
-    --path "C:\mc-server" ^
-    --version 1.21.4 ^
-    --accept-eula ^
-    --auto-install-java ^
-    --hardcore true ^
-    --max-ram 4096 ^
-    --difficulty hard ^
-    --gamemode survival
-```
-
-</details>
-
 ---
 
 ## 📋 Parameters Reference
 
 ### Core
 
-| Parameter | PS1 | Bash / CMD | Default | Description |
+| Parameter | PS1 | Bash | Default | Description |
 |---|---|---|---|---|
 | Server Path | `-ServerPath` | `--path` | *(prompted)* | Directory where server files are created |
 | Version | `-Version` | `--version` | *(prompted)* | Minecraft version (e.g. `1.21.4`, `1.20.1`) |
@@ -161,7 +130,7 @@ Create-MCServer.cmd ^
 
 ### Server Settings
 
-| Parameter | PS1 | Bash / CMD | Default | Description |
+| Parameter | PS1 | Bash | Default | Description |
 |---|---|---|---|---|
 | Server Name | `-ServerName` | `--name` | `A Minecraft Server` | MOTD shown in server list |
 | Port | `-ServerPort` | `--port` | `25565` | Server port |
@@ -172,7 +141,7 @@ Create-MCServer.cmd ^
 
 ### Gameplay
 
-| Parameter | PS1 | Bash / CMD | Default | Description |
+| Parameter | PS1 | Bash | Default | Description |
 |---|---|---|---|---|
 | Hardcore | `-Hardcore` | `--hardcore` | `false` | One life — death = ban |
 | Command Blocks | `-CommandBlocks` | `--command-blocks` | `true` | Enable command blocks |
@@ -184,7 +153,7 @@ Create-MCServer.cmd ^
 
 ### World
 
-| Parameter | PS1 | Bash / CMD | Default | Description |
+| Parameter | PS1 | Bash | Default | Description |
 |---|---|---|---|---|
 | Difficulty | `-Difficulty` | `--difficulty` | `normal` | `peaceful` · `easy` · `normal` · `hard` |
 | Gamemode | `-Gamemode` | `--gamemode` | `survival` | `survival` · `creative` · `adventure` · `spectator` |
@@ -194,7 +163,7 @@ Create-MCServer.cmd ^
 
 ### Performance
 
-| Parameter | PS1 | Bash / CMD | Default | Description |
+| Parameter | PS1 | Bash | Default | Description |
 |---|---|---|---|---|
 | Max RAM | `-MaxRam` | `--max-ram` | `2048` | Max server RAM in MB (512–32768) |
 
@@ -235,9 +204,6 @@ your-server-folder/
 # Linux
 ./start.sh
 
-# Windows (CMD)
-start.bat
-
 # Windows (PowerShell)
 .\start.ps1
 ```
@@ -249,7 +215,6 @@ start.bat
 | Platform | Requirements |
 |---|---|
 | **Windows (PS1)** | PowerShell 5.1+ (pre-installed on Windows 10/11) |
-| **Windows (CMD)** | Command Prompt + PowerShell (for JSON parsing) |
 | **Linux (Bash)** | `bash` 4+, `curl` or `wget`, `jq` (auto-installed if missing) |
 | **All** | Internet connection for first-time setup |
 
