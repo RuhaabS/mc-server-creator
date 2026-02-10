@@ -13,7 +13,6 @@ Automatic Java detection & install · Version picker · Paper + Plugins · Inter
 [![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)](#method-1--powershell-%EF%B8%8F)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](#method-2--bash-)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Donate-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/ruhaabs)
 
 </div>
 
@@ -251,14 +250,20 @@ your-server-folder/
 
 ---
 
+## 🌐 Playing with Friends
+
+If you are hosting the server locally, would reccomend using **[playit.gg](https://playit.gg)** to bring it live and sha re the link to your friends. Better alternate to port forwarding.
+
+1. Download and run the [playit.gg agent](https://playit.gg/download)
+2. Create a tunnel pointing to `localhost:25565`
+3. Share the generated address with your friends — done!
+
+---
+
 <div align="center">
 
 **Happy Crafting! ⛏️**
 
 Made with ❤️
-
-<a href="https://ko-fi.com/ruhaabs">
-  <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support on Ko-fi">
-</a>
 
 </div>
