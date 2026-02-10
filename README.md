@@ -8,7 +8,7 @@
 
 **One command to set up a fully configured Minecraft Java Edition server.**
 
-Automatic Java detection & install · Version picker · Interactive or scripted · Windows & Linux
+Automatic Java detection & install · Version picker · Paper + Plugins · Interactive or scripted · Windows & Linux
 
 [![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)](#method-1--powershell-%EF%B8%8F)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](#method-2--bash-)
@@ -24,6 +24,8 @@ Automatic Java detection & install · Version picker · Interactive or scripted 
 | Feature | Description |
 |---|---|
 | 🎮 **Version Picker** | Choose any release, snapshot, or specific version from Mojang's manifest |
+| 📦 **Server Type** | Vanilla (Mojang) or Paper (high-performance with plugin support) |
+| 🔌 **Plugin Installer** | Curated list of 13 popular plugins with one-command install (Paper only) |
 | ☕ **Auto Java Install** | Detects installed Java, checks MC version compatibility, offers to install the right JDK |
 | 📋 **Full Server Config** | Interactive prompts for MOTD, gamemode, difficulty, world type, PvP, hardcore, and more |
 | 📝 **Smart server.properties** | Generates Minecraft defaults first, then only replaces what you changed |
@@ -87,8 +89,7 @@ All other settings fall back to sensible defaults unless you override them.
 ```powershell
 .\Create-MCServer.ps1 `
     -ServerPath "C:\mc-server" `
-    -Version "1.21.4" `
-    -AcceptEula `
+    -Version "1.21.4" `    -ServerType paper `    -AcceptEula `
     -AutoInstallJava `
     -Hardcore true `
     -MaxRam 4096 `
@@ -105,6 +106,7 @@ All other settings fall back to sensible defaults unless you override them.
 ./create-mcserver.sh \
     --path ~/mc-server \
     --version 1.21.4 \
+    --server-type paper \
     --accept-eula \
     --auto-install-java \
     --hardcore true \
@@ -125,6 +127,7 @@ All other settings fall back to sensible defaults unless you override them.
 |---|---|---|---|---|
 | Server Path | `-ServerPath` | `--path` | *(prompted)* | Directory where server files are created |
 | Version | `-Version` | `--version` | *(prompted)* | Minecraft version (e.g. `1.21.4`, `1.20.1`) |
+| Server Type | `-ServerType` | `--server-type` | *(prompted)* | `vanilla` or `paper` |
 | Accept EULA | `-AcceptEula` | `--accept-eula` | *(prompted)* | Accept the [Minecraft EULA](https://aka.ms/MinecraftEULA) |
 | Auto Install Java | `-AutoInstallJava` | `--auto-install-java` | `false` | Automatically install Java if missing/outdated |
 
@@ -169,6 +172,30 @@ All other settings fall back to sensible defaults unless you override them.
 
 ---
 
+## 🔌 Plugin Support (Paper Only)
+
+When you choose **Paper** as the server type, you'll be offered a curated selection of popular plugins to install automatically:
+
+| # | Plugin | Description | Source |
+|---|---|---|---|
+| 1 | **EssentialsX** | Essential commands (home, tp, spawn, kits) | GitHub |
+| 2 | **LuckPerms** | Advanced permissions management | Jenkins CI |
+| 3 | **ViaVersion** | Allow newer clients on older servers | Hangar |
+| 4 | **ViaBackwards** | Allow older clients on newer servers | Hangar |
+| 5 | **Geyser** | Allow Bedrock Edition players to join | Direct URL |
+| 6 | **Floodgate** | Bedrock auth (companion to Geyser) | Direct URL |
+| 7 | **Chunky** | Pre-generate world chunks | Hangar |
+| 8 | **spark** | Performance profiler and monitoring | Jenkins CI |
+| 9 | **BlueMap** | 3D web-based live map of your world | Hangar |
+| 10 | **squaremap** | Minimalistic & lightweight web map | Hangar |
+| 11 | **Timber** | Chop entire trees by breaking one log | Modrinth |
+| 12 | **AuraSkills** | RPG skills & leveling (mcMMO alternative) | Hangar |
+| 13 | **AuraMobs** | Mob levels add-on for AuraSkills | Modrinth |
+
+You can install individual plugins by number (`1,2,5`), type `all` to install everything, or `search` to find more plugins on Hangar.
+
+---
+
 ## ☕ Java Auto-Detection
 
 The script automatically maps Minecraft versions to their required Java version:
@@ -190,9 +217,13 @@ If Java is missing or outdated, you'll be offered an automatic install:
 
 ```
 your-server-folder/
-├── server.jar            ← Downloaded from Mojang
+├── server.jar            ← Downloaded from Mojang / Paper
 ├── eula.txt              ← Auto-accepted
 ├── server.properties     ← Your custom settings
+├── plugins/              ← Installed plugins (Paper only)
+│   ├── EssentialsX.jar
+│   ├── LuckPerms-Bukkit.jar
+│   └── ...
 ├── start.sh              ← Linux start script (bash only)
 ├── start.bat             ← Windows start script
 └── start.ps1             ← PowerShell start script
