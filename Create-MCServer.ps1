@@ -1,4 +1,4 @@
-& {
+﻿& {
 # ============================================================
 #  Minecraft Server Creator Script
 #  Creates a Minecraft Java Edition server with custom settings
@@ -12,6 +12,7 @@ param(
     [string]$Version,
     [switch]$AcceptEula,
     [switch]$AutoInstallJava,
+    [string]$ServerType,
 
     # Server settings
     [string]$ServerName,
@@ -246,6 +247,450 @@ function Get-RecommendedJdkVersion {
     return 21
 }
 
+# --- Paper Server & Plugin Support ---
+
+function Get-PaperBuildInfo {
+    <#
+    .SYNOPSIS
+        Gets the latest Paper build for a given Minecraft version from the Paper API.
+        Returns a hashtable with Build number, FileName, and DownloadUrl.
+    #>
+    param([string]$McVersion)
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "mc-server-creator/1.0")
+
+        $projectJson = $wc.DownloadString("https://api.papermc.io/v2/projects/paper")
+        $project = $projectJson | ConvertFrom-Json
+
+        if ($McVersion -notin $project.versions) {
+            return $null
+        }
+
+        $buildsJson = $wc.DownloadString("https://api.papermc.io/v2/projects/paper/versions/$McVersion")
+        $buildsData = $buildsJson | ConvertFrom-Json
+        $latestBuild = $buildsData.builds | Select-Object -Last 1
+
+        $buildJson = $wc.DownloadString("https://api.papermc.io/v2/projects/paper/versions/$McVersion/builds/$latestBuild")
+        $buildData = $buildJson | ConvertFrom-Json
+        $downloadName = $buildData.downloads.application.name
+
+        return @{
+            Build       = $latestBuild
+            FileName    = $downloadName
+            DownloadUrl = "https://api.papermc.io/v2/projects/paper/versions/$McVersion/builds/$latestBuild/downloads/$downloadName"
+        }
+    }
+    catch {
+        Write-Host "  ERROR: Could not fetch Paper build info." -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        return $null
+    }
+}
+
+function Get-HangarPluginVersion {
+    <#
+    .SYNOPSIS
+        Gets the latest version of a plugin from Hangar (PaperMC's plugin repository).
+        Returns version name, download URL or external URL, and file info.
+    #>
+    param([string]$Slug)
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "mc-server-creator/1.0")
+
+        $url = "https://hangar.papermc.io/api/v1/projects/$Slug/versions?limit=1&platform=PAPER"
+        $json = $wc.DownloadString($url)
+        $data = $json | ConvertFrom-Json
+
+        if ($data.result.Count -eq 0) { return $null }
+
+        $version = $data.result[0]
+        $paperDownload = $version.downloads.PAPER
+
+        $result = @{
+            VersionName       = $version.name
+            HasDirectDownload = $false
+        }
+
+        if ($paperDownload.fileInfo) {
+            $result.FileName          = $paperDownload.fileInfo.name
+            $result.DownloadUrl       = "https://hangar.papermc.io/api/v1/projects/$Slug/versions/$($version.name)/PAPER/download"
+            $result.HasDirectDownload = $true
+        }
+        elseif ($paperDownload.externalUrl) {
+            $result.ExternalUrl       = $paperDownload.externalUrl
+            $result.HasDirectDownload = $false
+        }
+        else {
+            return $null
+        }
+
+        return $result
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-JenkinsCIArtifact {
+    <#
+    .SYNOPSIS
+        Downloads the latest artifact from a Jenkins CI job (e.g. ci.lucko.me for LuckPerms, spark).
+        Returns hashtable with FileName and DownloadUrl.
+    #>
+    param(
+        [string]$BaseUrl,       # e.g. "https://ci.lucko.me"
+        [string]$JobName,       # e.g. "LuckPerms"
+        [string]$ArtifactMatch  # regex to match artifact filename, e.g. "^LuckPerms-Bukkit-\d"
+    )
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "mc-server-creator/1.0")
+
+        $apiUrl = "$BaseUrl/job/$JobName/lastSuccessfulBuild/api/json"
+        $json = $wc.DownloadString($apiUrl)
+        $build = $json | ConvertFrom-Json
+
+        $artifact = $build.artifacts | Where-Object { $_.fileName -match $ArtifactMatch } | Select-Object -First 1
+        if (-not $artifact) { return $null }
+
+        return @{
+            FileName    = $artifact.fileName
+            DownloadUrl = "$BaseUrl/job/$JobName/lastSuccessfulBuild/artifact/$($artifact.relativePath)"
+            VersionName = $build.number.ToString()
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-GithubReleaseAsset {
+    <#
+    .SYNOPSIS
+        Gets the latest release asset from a GitHub repository.
+        Returns hashtable with FileName, DownloadUrl, and VersionName.
+    #>
+    param(
+        [string]$Repo,          # e.g. "EssentialsX/Essentials"
+        [string]$AssetMatch     # regex to match asset filename, e.g. "^EssentialsX-[\d\.]+\.jar$"
+    )
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "mc-server-creator/1.0")
+
+        $apiUrl = "https://api.github.com/repos/$Repo/releases/latest"
+        $json = $wc.DownloadString($apiUrl)
+        $release = $json | ConvertFrom-Json
+
+        $asset = $release.assets | Where-Object { $_.name -match $AssetMatch } | Select-Object -First 1
+        if (-not $asset) { return $null }
+
+        return @{
+            FileName    = $asset.name
+            DownloadUrl = $asset.browser_download_url
+            VersionName = $release.tag_name
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-ModrinthPluginVersion {
+    <#
+    .SYNOPSIS
+        Gets the latest Paper-compatible version of a plugin from Modrinth.
+        Returns hashtable with FileName, DownloadUrl, and VersionName.
+    #>
+    param(
+        [string]$ProjectSlug,
+        [string[]]$Loaders = @("paper", "bukkit", "spigot")
+    )
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "mc-server-creator/1.0")
+
+        $loadersJson = ($Loaders | ForEach-Object { "`"$_`"" }) -join ","
+        $encodedLoaders = [System.Uri]::EscapeDataString("[$loadersJson]")
+        $url = "https://api.modrinth.com/v2/project/$ProjectSlug/version?loaders=$encodedLoaders&limit=1"
+
+        $json = $wc.DownloadString($url)
+        $versions = $json | ConvertFrom-Json
+
+        if ($versions.Count -eq 0) { return $null }
+
+        $ver = $versions[0]
+        $primaryFile = $ver.files | Where-Object { $_.primary -eq $true } | Select-Object -First 1
+        if (-not $primaryFile) { $primaryFile = $ver.files | Select-Object -First 1 }
+        if (-not $primaryFile) { return $null }
+
+        return @{
+            FileName    = $primaryFile.filename
+            DownloadUrl = $primaryFile.url
+            VersionName = $ver.version_number
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-DirectDownload {
+    <#
+    .SYNOPSIS
+        Wraps a known direct download URL into the standard result format.
+    #>
+    param(
+        [string]$Url,
+        [string]$FileName
+    )
+    return @{
+        FileName    = $FileName
+        DownloadUrl = $Url
+        VersionName = "latest"
+    }
+}
+
+function Search-HangarPlugins {
+    <#
+    .SYNOPSIS
+        Searches Hangar (PaperMC's plugin repository) for Paper plugins, sorted by downloads.
+    #>
+    param(
+        [string]$Query = "",
+        [int]$Limit = 10
+    )
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "mc-server-creator/1.0")
+
+        $encodedQuery = [System.Uri]::EscapeDataString($Query)
+        $url = "https://hangar.papermc.io/api/v1/projects?q=$encodedQuery&sort=-downloads&platform=PAPER&limit=$Limit"
+
+        $json = $wc.DownloadString($url)
+        $data = $json | ConvertFrom-Json
+        return $data.result
+    }
+    catch {
+        Write-Host "  ERROR: Could not search Hangar." -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        return @()
+    }
+}
+
+function Install-PaperPlugins {
+    <#
+    .SYNOPSIS
+        Interactive Paper plugin selection and installation.
+        Presents a curated list of popular server plugins and allows searching Hangar.
+    #>
+    param(
+        [string]$GameVersion,
+        [string]$PluginsDir
+    )
+
+    if (-not (Test-Path $PluginsDir)) {
+        New-Item -ItemType Directory -Path $PluginsDir -Force | Out-Null
+    }
+
+    # Curated list of popular Paper server plugins
+    # Source: "hangar" = Hangar direct, "jenkins" = Jenkins CI, "github" = GitHub releases, "url" = direct URL
+    $popularPlugins = @(
+        @{ Slug = "Essentials";    Name = "EssentialsX";    Desc = "Essential commands (home, tp, spawn, kits)";   Source = "github";  GHRepo = "EssentialsX/Essentials"; GHAsset = "^EssentialsX-[\d\.]+\.jar$" }
+        @{ Slug = "LuckPerms";     Name = "LuckPerms";      Desc = "Advanced permissions management";              Source = "jenkins"; CIBase = "https://ci.lucko.me"; CIJob = "LuckPerms"; CIMatch = "^LuckPerms-Bukkit-\d" }
+        @{ Slug = "ViaVersion";    Name = "ViaVersion";     Desc = "Allow newer clients on older servers";          Source = "hangar" }
+        @{ Slug = "ViaBackwards";  Name = "ViaBackwards";   Desc = "Allow older clients on newer servers";          Source = "hangar" }
+        @{ Slug = "Geyser";        Name = "Geyser";         Desc = "Allow Bedrock Edition players to join";         Source = "url"; DirectUrl = "https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot"; DirectFile = "Geyser-Spigot.jar" }
+        @{ Slug = "Floodgate";     Name = "Floodgate";      Desc = "Bedrock auth (companion to Geyser)";           Source = "url"; DirectUrl = "https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot"; DirectFile = "Floodgate-Spigot.jar" }
+        @{ Slug = "Chunky";        Name = "Chunky";         Desc = "Pre-generate world chunks";                    Source = "hangar" }
+        @{ Slug = "spark";         Name = "spark";          Desc = "Performance profiler and monitoring";           Source = "jenkins"; CIBase = "https://ci.lucko.me"; CIJob = "spark"; CIMatch = "spark-[\d\.]+-paper\.jar" }
+        @{ Slug = "BlueMap";       Name = "BlueMap";        Desc = "3D web-based live map of your world";          Source = "hangar" }
+        @{ Slug = "Squaremap";     Name = "squaremap";      Desc = "Minimalistic & lightweight web map";           Source = "hangar" }
+        @{ Slug = "TreeTimber";    Name = "Timber";         Desc = "Chop entire trees by breaking one log";         Source = "modrinth"; MRSlug = "treetimber" }
+        @{ Slug = "AuraSkills";    Name = "AuraSkills";     Desc = "RPG skills & leveling (mcMMO alternative)";    Source = "hangar" }
+        @{ Slug = "AuraMobs";      Name = "AuraMobs";       Desc = "Mob levels add-on for AuraSkills";              Source = "modrinth"; MRSlug = "auramobs" }
+    )
+
+    Write-Host ""
+    Write-Host "  ╔══════════════════════════════════════════════╗" -ForegroundColor Blue
+    Write-Host "  ║         Plugin Installation                  ║" -ForegroundColor Blue
+    Write-Host "  ╚══════════════════════════════════════════════╝" -ForegroundColor Blue
+    Write-Host ""
+    Write-Host "  Popular plugins for Paper servers:" -ForegroundColor White
+    Write-Host ""
+
+    for ($i = 0; $i -lt $popularPlugins.Count; $i++) {
+        $plugin = $popularPlugins[$i]
+        $num = ($i + 1).ToString().PadLeft(2)
+        Write-Host "    [$num] $($plugin.Name.PadRight(16)) - $($plugin.Desc)" -ForegroundColor Gray
+    }
+
+    Write-Host ""
+    Write-Host "  Enter plugin numbers separated by commas (e.g. 1,2,3)" -ForegroundColor White
+    Write-Host "  Or type 'all' to install all, 'none' to skip, 'search' to search Hangar" -ForegroundColor DarkGray
+
+    $pluginsToInstall = @()
+
+    do {
+        $answer = Read-Host "  Selection"
+
+        if ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLower() -eq "none") {
+            Write-Host "  Skipping plugin installation." -ForegroundColor Yellow
+            return
+        }
+
+        if ($answer.Trim().ToLower() -eq "all") {
+            $pluginsToInstall = $popularPlugins
+            break
+        }
+
+        if ($answer.Trim().ToLower() -eq "search") {
+            $searchQuery = Read-Host "  Search Hangar for"
+            if (-not [string]::IsNullOrWhiteSpace($searchQuery)) {
+                Write-Host "  Searching Hangar for '$searchQuery'..." -ForegroundColor DarkGray
+                $searchResults = Search-HangarPlugins -Query $searchQuery -Limit 10
+
+                if ($searchResults.Count -eq 0) {
+                    Write-Host "  No plugins found for '$searchQuery'." -ForegroundColor Yellow
+                } else {
+                    Write-Host ""
+                    Write-Host "  Search results:" -ForegroundColor White
+                    for ($i = 0; $i -lt $searchResults.Count; $i++) {
+                        $plugin = $searchResults[$i]
+                        $num = ($i + 1).ToString().PadLeft(2)
+                        $downloads = if ($plugin.stats.downloads -ge 1000000) { "$([math]::Round($plugin.stats.downloads / 1000000, 1))M" } `
+                                     elseif ($plugin.stats.downloads -ge 1000) { "$([math]::Round($plugin.stats.downloads / 1000, 1))K" } `
+                                     else { "$($plugin.stats.downloads)" }
+                        $descTrunc = $plugin.description
+                        if ($descTrunc.Length -gt 50) { $descTrunc = $descTrunc.Substring(0, 50) + "..." }
+                        Write-Host "    [$num] $($plugin.name.PadRight(24)) $($downloads.PadLeft(6)) dl  - $descTrunc" -ForegroundColor Gray
+                    }
+                    Write-Host ""
+                    $searchAnswer = Read-Host "  Enter numbers to install (e.g. 1,2) or press Enter to go back"
+                    if (-not [string]::IsNullOrWhiteSpace($searchAnswer)) {
+                        $nums = $searchAnswer -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
+                        foreach ($n in $nums) {
+                            if ($n -ge 1 -and $n -le $searchResults.Count) {
+                                $sr = $searchResults[$n - 1]
+                                $pluginsToInstall += @{ Slug = $sr.name; Name = $sr.name; Desc = $sr.description; Source = "hangar" }
+                            }
+                        }
+                    }
+                }
+                Write-Host ""
+                Write-Host "  Enter numbers from the popular list, 'search' again, or 'done' to proceed" -ForegroundColor DarkGray
+                continue
+            }
+            continue
+        }
+
+        if ($answer.Trim().ToLower() -eq "done") {
+            break
+        }
+
+        # Parse comma-separated numbers
+        $nums = $answer -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
+        $valid = $true
+        foreach ($n in $nums) {
+            if ($n -lt 1 -or $n -gt $popularPlugins.Count) {
+                Write-Host "  Invalid number: $n. Please enter 1-$($popularPlugins.Count)." -ForegroundColor Yellow
+                $valid = $false
+                break
+            }
+        }
+        if ($valid -and $nums.Count -gt 0) {
+            foreach ($n in $nums) {
+                $pluginsToInstall += $popularPlugins[$n - 1]
+            }
+            break
+        }
+        if ($nums.Count -eq 0) {
+            Write-Host "  Please enter valid numbers, 'all', 'none', or 'search'." -ForegroundColor Yellow
+        }
+    } while ($true)
+
+    if ($pluginsToInstall.Count -eq 0) {
+        Write-Host "  No plugins selected." -ForegroundColor Yellow
+        return
+    }
+
+    # Remove duplicates by slug
+    $uniquePlugins = @{}
+    $finalPlugins = @()
+    foreach ($plugin in $pluginsToInstall) {
+        if (-not $uniquePlugins.ContainsKey($plugin.Slug)) {
+            $uniquePlugins[$plugin.Slug] = $true
+            $finalPlugins += $plugin
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  Installing $($finalPlugins.Count) plugin(s)..." -ForegroundColor Cyan
+
+    $installedCount = 0
+    $failedCount = 0
+
+    foreach ($plugin in $finalPlugins) {
+        Write-Host "    Downloading $($plugin.Name)..." -ForegroundColor White -NoNewline
+
+        $downloadInfo = $null
+        $source = if ($plugin.Source) { $plugin.Source } else { "hangar" }
+
+        switch ($source) {
+            "hangar" {
+                $hv = Get-HangarPluginVersion -Slug $plugin.Slug
+                if ($hv -and $hv.HasDirectDownload) {
+                    $downloadInfo = @{
+                        FileName    = if ($hv.FileName) { $hv.FileName } else { "$($plugin.Slug)-$($hv.VersionName).jar" }
+                        DownloadUrl = $hv.DownloadUrl
+                        VersionName = $hv.VersionName
+                    }
+                }
+            }
+            "jenkins" {
+                $downloadInfo = Get-JenkinsCIArtifact -BaseUrl $plugin.CIBase -JobName $plugin.CIJob -ArtifactMatch $plugin.CIMatch
+            }
+            "github" {
+                $downloadInfo = Get-GithubReleaseAsset -Repo $plugin.GHRepo -AssetMatch $plugin.GHAsset
+            }
+            "modrinth" {
+                $downloadInfo = Get-ModrinthPluginVersion -ProjectSlug $plugin.MRSlug
+            }
+            "url" {
+                $downloadInfo = Get-DirectDownload -Url $plugin.DirectUrl -FileName $plugin.DirectFile
+            }
+        }
+
+        if (-not $downloadInfo) {
+            Write-Host " not available" -ForegroundColor Yellow
+            $failedCount++
+            continue
+        }
+
+        try {
+            $pluginPath = Join-Path $PluginsDir $downloadInfo.FileName
+            $wc = New-Object System.Net.WebClient
+            $wc.Headers.Add("User-Agent", "mc-server-creator/1.0")
+            $wc.DownloadFile($downloadInfo.DownloadUrl, $pluginPath)
+            $sizeMB = [math]::Round((Get-Item $pluginPath).Length / 1MB, 2)
+            Write-Host " done (v$($downloadInfo.VersionName), $sizeMB MB)" -ForegroundColor Green
+            $installedCount++
+        }
+        catch {
+            Write-Host " download failed" -ForegroundColor Red
+            $failedCount++
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  Plugins installed: $installedCount" -ForegroundColor Green
+    if ($failedCount -gt 0) {
+        Write-Host "  Plugins failed:    $failedCount" -ForegroundColor Yellow
+    }
+}
+
 # ============================================================
 #  MAIN SCRIPT
 # ============================================================
@@ -460,6 +905,28 @@ if (-not $versionEntry) {
     return
 }
 
+# --- Select Server Type ---
+Write-Host ""
+Write-Host "  ╔══════════════════════════════════════════════╗" -ForegroundColor Blue
+Write-Host "  ║         Server Type                          ║" -ForegroundColor Blue
+Write-Host "  ╚══════════════════════════════════════════════╝" -ForegroundColor Blue
+
+$validServerTypes = @("vanilla", "paper")
+if (-not [string]::IsNullOrWhiteSpace($ServerType) -and $ServerType.ToLower() -in $validServerTypes) {
+    $selectedServerType = $ServerType.ToLower()
+} elseif ($nonInteractive) {
+    $selectedServerType = "vanilla"
+} else {
+    $typeChoice = Ask-Choice "Select server type:" @(
+        "Vanilla  — Official Mojang server",
+        "Paper    — High-performance server with plugin support"
+    ) 0
+    $selectedServerType = @("vanilla", "paper")[$typeChoice]
+}
+
+$serverTypeDisplay = $selectedServerType.Substring(0,1).ToUpper() + $selectedServerType.Substring(1)
+Write-Host "  Server type: $serverTypeDisplay" -ForegroundColor Cyan
+
 # --- Check Java compatibility for selected MC version ---
 $requiredJava   = Get-RequiredJavaVersion -McVersion $selectedVersion
 $recommendedJdk = Get-RecommendedJdkVersion -MinJava $requiredJava
@@ -570,26 +1037,78 @@ if ($needsJava) {
     } # end interactive else
 }
 
-# Get server JAR download URL
-Write-Host "  Fetching download URL for $selectedVersion..." -ForegroundColor DarkGray
-$jarUrl = Get-ServerJarUrl -VersionUrl $versionEntry.url
-if (-not $jarUrl) {
-    Write-Host "  ERROR: No server JAR available for version $selectedVersion." -ForegroundColor Red
-    return
+# --- Download Server JAR ---
+if ($selectedServerType -eq "paper") {
+    Write-Host ""
+    Write-Host "  Checking Paper availability for MC $selectedVersion..." -ForegroundColor DarkGray
+
+    $paperBuild = Get-PaperBuildInfo -McVersion $selectedVersion
+    if (-not $paperBuild) {
+        Write-Host "  Paper is not available for MC $selectedVersion." -ForegroundColor Yellow
+        if (-not $nonInteractive) {
+            if (Ask-YesNo "  Fall back to Vanilla server?" $true) {
+                $selectedServerType = "vanilla"
+                $serverTypeDisplay = "Vanilla"
+            } else {
+                Write-Host "  Exiting." -ForegroundColor Gray
+                return
+            }
+        } else {
+            Write-Host "  Falling back to Vanilla server." -ForegroundColor Yellow
+            $selectedServerType = "vanilla"
+            $serverTypeDisplay = "Vanilla"
+        }
+    } else {
+        Write-Host "  Paper build #$($paperBuild.Build) available" -ForegroundColor Cyan
+        $jarPath = Join-Path $ServerPath "server.jar"
+        Write-Host "  Downloading Paper server JAR..." -ForegroundColor White
+        try {
+            (New-Object System.Net.WebClient).DownloadFile($paperBuild.DownloadUrl, $jarPath)
+            $sizeMB = [math]::Round((Get-Item $jarPath).Length / 1MB, 2)
+            Write-Host "  Downloaded Paper server.jar ($sizeMB MB)" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  ERROR: Failed to download Paper server JAR." -ForegroundColor Red
+            Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+            if (-not $nonInteractive) {
+                if (Ask-YesNo "  Fall back to Vanilla server?" $true) {
+                    $selectedServerType = "vanilla"
+                    $serverTypeDisplay = "Vanilla"
+                } else {
+                    Write-Host "  Exiting." -ForegroundColor Gray
+                    return
+                }
+            } else {
+                Write-Host "  Falling back to Vanilla server." -ForegroundColor Yellow
+                $selectedServerType = "vanilla"
+                $serverTypeDisplay = "Vanilla"
+            }
+        }
+    }
 }
 
-# Download the JAR
-$jarPath = Join-Path $ServerPath "server.jar"
-Write-Host "  Downloading server.jar..." -ForegroundColor White
-try {
-    (New-Object System.Net.WebClient).DownloadFile($jarUrl, $jarPath)
-    $sizeMB = [math]::Round((Get-Item $jarPath).Length / 1MB, 2)
-    Write-Host "  Downloaded server.jar ($sizeMB MB)" -ForegroundColor Green
-}
-catch {
-    Write-Host "  ERROR: Failed to download server.jar" -ForegroundColor Red
-    Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
-    return
+if ($selectedServerType -eq "vanilla") {
+    # Get vanilla server JAR download URL
+    Write-Host "  Fetching download URL for $selectedVersion..." -ForegroundColor DarkGray
+    $jarUrl = Get-ServerJarUrl -VersionUrl $versionEntry.url
+    if (-not $jarUrl) {
+        Write-Host "  ERROR: No server JAR available for version $selectedVersion." -ForegroundColor Red
+        return
+    }
+
+    # Download the JAR
+    $jarPath = Join-Path $ServerPath "server.jar"
+    Write-Host "  Downloading server.jar..." -ForegroundColor White
+    try {
+        (New-Object System.Net.WebClient).DownloadFile($jarUrl, $jarPath)
+        $sizeMB = [math]::Round((Get-Item $jarPath).Length / 1MB, 2)
+        Write-Host "  Downloaded server.jar ($sizeMB MB)" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  ERROR: Failed to download server.jar" -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        return
+    }
 }
 
 # --- Accept EULA ---
@@ -617,6 +1136,16 @@ if ($AcceptEula -or $nonInteractive) {
 $eulaPath = Join-Path $ServerPath "eula.txt"
 Set-Content -Path $eulaPath -Value "# Minecraft EULA - accepted via Create-MCServer.ps1`neula=true" -Force
 Write-Host "  EULA accepted and saved." -ForegroundColor Green
+
+# --- Plugin Installation ---
+if ($selectedServerType -eq "paper" -and -not $nonInteractive) {
+    $pluginsDir = Join-Path $ServerPath "plugins"
+    Write-Host ""
+    $wantPlugins = Ask-YesNo "  Would you like to install plugins?" $true
+    if ($wantPlugins) {
+        Install-PaperPlugins -GameVersion $selectedVersion -PluginsDir $pluginsDir
+    }
+}
 
 # --- Server Configuration ---
 Write-Host ""
@@ -855,6 +1384,7 @@ Write-Host "  ║         Server Created Successfully!         ║" -ForegroundC
 Write-Host "  ╚══════════════════════════════════════════════╝" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Location:       $ServerPath" -ForegroundColor White
+Write-Host "  Server type:    $serverTypeDisplay" -ForegroundColor $(if($selectedServerType -eq "paper"){"Blue"}else{"White"})
 Write-Host "  Version:        $selectedVersion" -ForegroundColor White
 Write-Host "  Port:           $serverPort" -ForegroundColor White
 Write-Host "  Gamemode:       $gamemode" -ForegroundColor White
@@ -863,6 +1393,16 @@ Write-Host "  Hardcore:       $(&$boolStr $hardcore)" -ForegroundColor $(if($har
 Write-Host "  Command Blocks: $(&$boolStr $commandBlocks)" -ForegroundColor White
 Write-Host "  Allow Flight:   $(&$boolStr $allowFlight)" -ForegroundColor White
 Write-Host "  Max RAM:        ${maxRamMB}MB" -ForegroundColor White
+if ($selectedServerType -eq "paper") {
+    $summaryPluginsDir = Join-Path $ServerPath "plugins"
+    if (Test-Path $summaryPluginsDir) {
+        $pluginFiles = Get-ChildItem $summaryPluginsDir -Filter "*.jar" -ErrorAction SilentlyContinue
+        $pluginCount = if ($pluginFiles) { @($pluginFiles).Count } else { 0 }
+        if ($pluginCount -gt 0) {
+            Write-Host "  Plugins:        $pluginCount installed" -ForegroundColor Blue
+        }
+    }
+}
 Write-Host ""
 Write-Host "  To start your server:" -ForegroundColor Yellow
 Write-Host "    cd `"$ServerPath`"" -ForegroundColor Gray
